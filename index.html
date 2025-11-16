@@ -50,18 +50,11 @@
         </div>
       </div>
 
-      <!-- Noise controls -->
+      <!-- BIG TOGGLE BUTTONS -->
       <div class="spacer"></div>
-      <div class="row" style="gap:12px">
-        <button id="startNoiseBtn" class="btn full">Start noise</button>
-        <button id="stopNoiseBtn" class="btn secondary full" disabled>Stop noise</button>
-      </div>
-
-      <!-- Listening controls -->
-      <div class="spacer"></div>
-      <div class="row" style="gap:12px">
-        <button id="startListenBtn" class="btn secondary full">Start listening</button>
-        <button id="stopListenBtn" class="btn secondary full" disabled>Stop listening</button>
+      <div class="row" style="flex-direction:column; gap:10px;">
+        <button id="noiseBtn" class="btn secondary full">Noise: OFF</button>
+        <button id="listenBtn" class="btn secondary full">Listening: OFF</button>
       </div>
 
       <div class="spacer"></div>
@@ -130,7 +123,7 @@
     <div class="spacer"></div>
     <button id="logDownload" class="btn full" disabled>Download CSV</button>
     <div class="small" style="margin-top:6px;">
-      For a drive test: tap <b>Start noise</b> and <b>Start listening</b>, then (optionally) turn on <b>Auto adapt</b>,
+      For a drive test: toggle <b>Noise</b> and <b>Listening</b> ON, then (optionally) turn on <b>Auto adapt</b>,
       hit <b>Start logging</b>, drive 20–60 seconds, then <b>Stop logging</b> and <b>Download CSV</b>.
       Noise will be logged as <b>pink/brown/gray</b> or <b>none</b> when off.
     </div>
@@ -140,7 +133,7 @@
   <div class="card" style="margin-top:16px">
     <div class="muted">Tips</div>
     <ul class="small">
-      <li>Pair iPhone → Car via Bluetooth <b>first</b>, ideally as a <b>speaker / media device</b>, not just “phone call”. Then open this page and tap <b>Start noise</b>.</li>
+      <li>Pair iPhone → Car via Bluetooth <b>first</b>, ideally as a <b>speaker / media device</b>, not just “phone call”. Then open this page and toggle <b>Noise</b> ON.</li>
       <li>In the car, a good starting point is around <b>-30 to -22 dB</b>, then adjust by feel.</li>
       <li>With <b>Auto adapt</b> ON, the app:
         <ul>
@@ -167,7 +160,7 @@
         It feels “even” and airy. Good for quieter cars or EVs where the noise is more high-frequency than bassy.</li>
 
       <li><b>Auto adapt (tone):</b> When enabled, the app looks at the microphone spectrum:
-        if the cabin is very bass-heavy (low bars much taller than high bars), it shifts toward <b>Gray</b> to fill in highs;
+        if the cabin is very bass-heavy (low bars much taller than high bars), it shifts toward <b>Gray</b> to add more highs;
         if highs dominate, it leans more <b>Brown</b> to fill lows; otherwise it tends toward <b>Pink</b>.
         This is a simple feedback loop to “flatten” the overall shape so the sound feels smoother and less fatiguing.</li>
 
@@ -177,17 +170,10 @@
 
       <li><b>Cabin (RMS)</b>: A rolling average of how strong the sound is at the iPhone mic, measured in
         <b>dBFS</b> (decibels relative to full scale). 0 dBFS would be a clipped signal, so normal car levels
-        will be negative (for example −35 to −10 dBFS). When you switch RoadCalm ON, this number may go up a bit
-        because we’re adding low-level masking noise.</li>
-
-      <li><b>When RoadCalm is “working”:</b> With your car at a steady speed, toggle <b>Start noise</b> ON/OFF.
-        With noise ON, the cabin should sound smoother and less harsh / fatiguing, even if the RMS number goes up.
-        With noise OFF, the road noise usually feels more “raw” and spiky.</li>
+        will be negative (for example −35 to −10 dBFS).</li>
 
       <li><b>Spectrum plot</b>: Each bar shows how much energy there is at different frequencies:
-        low rumble on the left, speech and mid-range in the center, hiss/whine on the right.
-        With noise OFF, you often see sharp peaks and dips. With noise ON (and especially with Auto adapt),
-        the plot should look more <b>filled-in and even</b>, especially in the low-to-mid range.</li>
+        low rumble on the left, speech and mid-range in the center, hiss/whine on the right.</li>
 
       <li><b>FPS</b>: Frames per second – how often the display and spectrum graph update. Values around 20–30 are normal;
         it doesn’t affect the audio, just how smooth the visual feels.</li>
@@ -197,27 +183,7 @@
         so passengers and phone calls can hear you more clearly.</li>
 
       <li><b>Logging</b>: Every ~0.25 s the code records a row with timestamp, RMS dB, whether noise is <b>pink/brown/gray</b> or <b>none</b>,
-        level, ducking gain, and 16 coarse spectrum bands. The <b>Download CSV</b> button bundles those rows into a file
-        you can open in Excel, Google Sheets, or send to someone for analysis (for example, comparing different speeds,
-        tires, or settings).</li>
-
-      <li><b>Under the hood (high-level view):</b>
-        <ul>
-          <li>The page uses the browser’s <b>Web Audio API</b> to create a small audio graph.</li>
-          <li>A noise generator node produces Brown/Pink/Gray noise samples in real time.</li>
-          <li>With <b>Auto adapt</b> OFF, the selected color and slider value go straight to the gain node.</li>
-          <li>With <b>Auto adapt</b> ON, the app:
-            <ul>
-              <li>Reads the mic’s spectrum to pick the color (Brown/Pink/Gray) that flattens low vs high balance,</li>
-              <li>Reads the mic’s RMS to set a dynamic target level a few dB below the environment, while respecting the slider cap,</li>
-              <li>Applies voice ducking on top of that when you speak.</li>
-            </ul>
-          </li>
-          <li>The mic stream feeds <b>Analyser</b> nodes for RMS, spectrum visualization, and logging.</li>
-          <li>An animation loop redraws the spectrum and updates FPS/RMS on screen. A timer periodically samples the latest
-              values and saves them to the log buffer for CSV download.</li>
-        </ul>
-      </li>
+        level, ducking gain, and 16 coarse spectrum bands.</li>
     </ul>
   </div>
 </div>
@@ -225,16 +191,14 @@
 <script>
 (() => {
   // ---------- UI elements ----------
-  const startNoiseBtn  = document.getElementById('startNoiseBtn');
-  const stopNoiseBtn   = document.getElementById('stopNoiseBtn');
-  const startListenBtn = document.getElementById('startListenBtn');
-  const stopListenBtn  = document.getElementById('stopListenBtn');
+  const noiseBtn   = document.getElementById('noiseBtn');
+  const listenBtn  = document.getElementById('listenBtn');
 
-  const noiseSel = document.getElementById('noise');
-  const gainSl   = document.getElementById('gain');
-  const gainVal  = document.getElementById('gainVal');
+  const noiseSel   = document.getElementById('noise');
+  const gainSl     = document.getElementById('gain');
+  const gainVal    = document.getElementById('gainVal');
   const autoModeCB = document.getElementById('autoMode');
-  const toneInfo = document.getElementById('toneInfo');
+  const toneInfo   = document.getElementById('toneInfo');
 
   const duckCB   = document.getElementById('duck');
   const wakeCB   = document.getElementById('wake');
@@ -245,10 +209,10 @@
   const ctx2d    = scope.getContext('2d');
   const routeEl  = document.getElementById('route');
 
-  const logStatusEl   = document.getElementById('logStatus');
-  const logStartBtn   = document.getElementById('logStart');
-  const logStopBtn    = document.getElementById('logStop');
-  const logDownloadBtn= document.getElementById('logDownload');
+  const logStatusEl    = document.getElementById('logStatus');
+  const logStartBtn    = document.getElementById('logStart');
+  const logStopBtn     = document.getElementById('logStop');
+  const logDownloadBtn = document.getElementById('logDownload');
 
   // ---------- State ----------
   let ac = null;
@@ -260,6 +224,8 @@
   let micStream = null, micSource = null;
 
   let gen = null;
+  let genPink, genBrown, genGray;
+
   let listening = false;
   let noiseOn   = false;
   let animating = false;
@@ -269,31 +235,22 @@
   let latestRmsDb = null;
   let latestDuckGain = 1.0;
 
-  let activeNoiseKind = 'pink';     // what is actually used now
-  let autoToneKind = 'pink';        // auto-selected kind
-  let lastToneUpdate = 0;           // ms
+  let activeNoiseKind = 'pink';
+  let autoToneKind = 'pink';
+  let lastToneUpdate = 0;
 
-  // For auto-level smoothing
+  // Auto-level
   let currentGainDb = parseFloat(gainSl.value);
   let targetGainDb  = currentGainDb;
 
-  // Logging state
+  // Logging
   let logging = false;
   let logRows = [];
   let lastLogTime = 0;
-  const LOG_INTERVAL_MS = 250; // 4 Hz approx
+  const LOG_INTERVAL_MS = 250;
 
-  // Persisted settings
-  const saved = JSON.parse(localStorage.getItem('rc_settings')||'{}');
-  if(saved.noise) noiseSel.value = saved.noise;
-  if(saved.gain)  { gainSl.value = saved.gain; currentGainDb = targetGainDb = parseFloat(saved.gain); }
-  if(saved.duck!==undefined) duckCB.checked = saved.duck;
-  if(saved.auto!==undefined) autoModeCB.checked = saved.auto;
-  gainVal.textContent = gainSl.value + " dB";
-  activeNoiseKind = noiseSel.value;
-  autoToneKind = activeNoiseKind;
-  toneInfo.textContent = `Tone: ${capitalize(activeNoiseKind)} (${autoModeCB.checked ? 'auto' : 'manual'})`;
-  noiseSel.disabled = autoModeCB.checked;
+  // ---------- Helpers ----------
+  function capitalize(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
 
   function saveSettings(){
     localStorage.setItem('rc_settings', JSON.stringify({
@@ -315,7 +272,42 @@
     }
   }
 
-  function capitalize(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+  function updateStatusLabel(){
+    let text = "Stopped";
+    if(listening && noiseOn) text = "Listening + Noise";
+    else if(noiseOn) text = "Noise only";
+    else if(listening) text = "Listening only";
+
+    statusEl.textContent = text;
+    statusEl.style.color = (listening || noiseOn) ? '#8bd17c' : '#90a4b7';
+  }
+
+  function updateButtonsUI(){
+    // Noise button
+    noiseBtn.textContent = noiseOn ? "Noise: ON" : "Noise: OFF";
+    if(noiseOn) noiseBtn.classList.remove('secondary');
+    else if(!noiseBtn.classList.contains('secondary')) noiseBtn.classList.add('secondary');
+
+    // Listening button
+    listenBtn.textContent = listening ? "Listening: ON" : "Listening: OFF";
+    if(listening) listenBtn.classList.remove('secondary');
+    else if(!listenBtn.classList.contains('secondary')) listenBtn.classList.add('secondary');
+  }
+
+  async function maybeAcquireWakeLock(){
+    if(!wakeCB.checked) return;
+    if(!('wakeLock' in navigator)) return;
+    if(wakeLock) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+  }
+
+  async function maybeReleaseWakeLock(){
+    if(listening || noiseOn) return;
+    if(wakeLock){
+      try { await wakeLock.release(); } catch(e){}
+      wakeLock = null;
+    }
+  }
 
   // ---------- Noise generators ----------
   function makePink() {
@@ -337,7 +329,6 @@
     const st = { y:0 };
     return () => { const w = Math.random()*2-1; st.y += 0.02*w; st.y *= 0.996; return st.y; };
   }
-  // Gray ≈ pink + light high-shelf
   function makeGray() {
     const pink = makePink();
     let prev = 0;
@@ -349,20 +340,37 @@
     }
   }
 
-  let genPink = makePink();
-  let genBrown = makeBrown();
-  let genGray = makeGray();
+  genPink = makePink();
+  genBrown = makeBrown();
+  genGray = makeGray();
 
   function selectGen(kind){
     activeNoiseKind = kind;
-    // pick underlying generator
     if(kind === 'pink') gen = genPink;
     else if(kind === 'brown') gen = genBrown;
     else gen = genGray;
     toneInfo.textContent = `Tone: ${capitalize(activeNoiseKind)} (${autoModeCB.checked ? 'auto' : 'manual'})`;
   }
-  selectGen(activeNoiseKind);
 
+  // ---------- Settings init ----------
+  (function initSettings(){
+    const saved = JSON.parse(localStorage.getItem('rc_settings')||'{}');
+    if(saved.noise) noiseSel.value = saved.noise;
+    if(saved.gain){
+      gainSl.value = saved.gain;
+      currentGainDb = targetGainDb = parseFloat(saved.gain);
+    }
+    if(saved.duck!==undefined) duckCB.checked = saved.duck;
+    if(saved.auto!==undefined) autoModeCB.checked = saved.auto;
+
+    gainVal.textContent = gainSl.value + " dB";
+    activeNoiseKind = noiseSel.value;
+    autoToneKind = activeNoiseKind;
+    selectGen(activeNoiseKind);
+    noiseSel.disabled = autoModeCB.checked;
+  })();
+
+  // ---------- UI events ----------
   noiseSel.onchange = () => {
     if(!autoModeCB.checked){
       selectGen(noiseSel.value);
@@ -379,14 +387,40 @@
     }
     saveSettings();
   };
+
   duckCB.onchange = () => saveSettings();
+
   autoModeCB.onchange = () => {
     noiseSel.disabled = autoModeCB.checked;
     toneInfo.textContent = `Tone: ${capitalize(activeNoiseKind)} (${autoModeCB.checked ? 'auto' : 'manual'})`;
     saveSettings();
   };
 
-  // ---------- Logging helpers ----------
+  noiseBtn.addEventListener('click', () => {
+    if(noiseOn) stopNoise();
+    else startNoise();
+  });
+
+  listenBtn.addEventListener('click', () => {
+    if(listening) stopListening();
+    else startListening();
+  });
+
+  wakeCB.addEventListener('change', () => {
+    if(wakeCB.checked && (listening || noiseOn)){
+      maybeAcquireWakeLock();
+    } else {
+      maybeReleaseWakeLock();
+    }
+  });
+
+  logStartBtn.addEventListener('click', () => startLogging());
+  logStopBtn.addEventListener('click', () => stopLogging());
+  logDownloadBtn.addEventListener('click', () => downloadCSV());
+
+  routeEl.textContent = 'iPhone → Bluetooth (A2DP)';
+
+  // ---------- Logging ----------
   function setLoggingUI(on) {
     logging = on;
     logStatusEl.textContent = on ? "Logging… rows: " + (logRows.length-1) : "Not logging";
@@ -461,32 +495,6 @@
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Status / wake helpers ----------
-  function updateStatusLabel(){
-    let text = "Stopped";
-    if(listening && noiseOn) text = "Listening + Noise";
-    else if(noiseOn) text = "Noise only";
-    else if(listening) text = "Listening only";
-
-    statusEl.textContent = text;
-    statusEl.style.color = (listening || noiseOn) ? '#8bd17c' : '#90a4b7';
-  }
-
-  async function maybeAcquireWakeLock(){
-    if(!wakeCB.checked) return;
-    if(!('wakeLock' in navigator)) return;
-    if(wakeLock) return;
-    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
-  }
-
-  async function maybeReleaseWakeLock(){
-    if(listening || noiseOn) return;
-    if(wakeLock){
-      try { await wakeLock.release(); } catch(e){}
-      wakeLock = null;
-    }
-  }
-
   // ---------- Auto level ----------
   function updateAutoGain(envDb){
     if(!autoModeCB.checked || !gainNode) return;
@@ -497,14 +505,12 @@
       targetGainDb = sliderDb;
     } else {
       let tgt = envDb - margin;
-      // never louder (less negative) than slider setting
       if(tgt > sliderDb) tgt = sliderDb;
-      // clamp to slider range
       tgt = Math.max(-45, Math.min(-5, tgt));
       targetGainDb = tgt;
     }
 
-    const alpha = 0.05; // smoothing factor
+    const alpha = 0.05;
     currentGainDb += (targetGainDb - currentGainDb) * alpha;
     gainNode.gain.value = dbToGain(currentGainDb);
   }
@@ -512,31 +518,29 @@
   // ---------- Auto tone ----------
   function updateAutoTone(now){
     if(!autoModeCB.checked || !specData || !specAnalyser || !noiseOn) return;
-    if(now - lastToneUpdate < 500) return; // update at most ~2 Hz
+    if(now - lastToneUpdate < 500) return;
     lastToneUpdate = now;
 
     const bins = specData.length;
     if(bins < 32) return;
 
-    const lowEnd = Math.floor(bins * 0.25); // lowest 25%
-    const highStart = Math.floor(bins * 0.6); // top 40%
+    const lowEnd = Math.floor(bins * 0.25);
+    const highStart = Math.floor(bins * 0.6);
 
     let lowSum = 0, highSum = 0;
     for(let i=0;i<lowEnd;i++) lowSum += specData[i];
     for(let i=highStart;i<bins;i++) highSum += specData[i];
     const lowAvg = lowSum / lowEnd;
     const highAvg = highSum / (bins - highStart);
-    const tilt = lowAvg - highAvg; // positive = bass-heavy
+    const tilt = lowAvg - highAvg;
 
-    const TH = 8; // threshold
+    const TH = 8;
 
     let newKind = autoToneKind;
     if(tilt > TH){
-      // cabin is bass-heavy -> shift toward gray to add more highs
-      newKind = 'gray';
+      newKind = 'gray';   // bass-heavy cabin -> add highs
     } else if(tilt < -TH){
-      // cabin is treble-heavy -> shift toward brown to add lows
-      newKind = 'brown';
+      newKind = 'brown';  // treble-heavy cabin -> add lows
     } else {
       newKind = 'pink';
     }
@@ -587,9 +591,8 @@
     gainNode.connect(ac.destination);
 
     noiseOn = true;
-    startNoiseBtn.disabled = true;
-    stopNoiseBtn.disabled  = false;
     updateStatusLabel();
+    updateButtonsUI();
     maybeAcquireWakeLock();
 
     if('mediaSession' in navigator){
@@ -607,9 +610,8 @@
     scriptNode = null;
     gainNode = null;
     noiseOn = false;
-    startNoiseBtn.disabled = false;
-    stopNoiseBtn.disabled  = true;
     updateStatusLabel();
+    updateButtonsUI();
     maybeReleaseWakeLock();
   }
 
@@ -644,9 +646,8 @@
     }
 
     listening = true;
-    startListenBtn.disabled = true;
-    stopListenBtn.disabled  = false;
     updateStatusLabel();
+    updateButtonsUI();
     maybeAcquireWakeLock();
 
     if(!animating){
@@ -669,9 +670,8 @@
     specData = null;
 
     listening = false;
-    startListenBtn.disabled = false;
-    stopListenBtn.disabled  = true;
     updateStatusLabel();
+    updateButtonsUI();
     maybeReleaseWakeLock();
   }
 
@@ -690,12 +690,13 @@
       frameCount=0; lastFrameT = now;
     }
 
-    // Meter RMS
+    // Meter RMS (BUG FIX HERE: use meterData[i] * meterData[i])
     if(meterAnalyser && meterData){
       meterAnalyser.getFloatTimeDomainData(meterData);
-      let sum=0; for(let i=0;i<meterData.length;i++) sum += meterData[i]*m
+      let sum=0;
+      for(let i=0;i<meterData.length;i++) sum += meterData[i]*meterData[i];
       const rms = Math.sqrt(sum/meterData.length);
-      const db = 20*Math.log10(Math.max(rms,1e-7));
+      const db  = 20*Math.log10(Math.max(rms,1e-7));
       latestRmsDb = db;
       rmsEl.textContent = db.toFixed(1) + ' dBFS';
     } else {
@@ -729,25 +730,10 @@
     tryLogRow(now);
   }
 
-  // ---------- Events ----------
-  startNoiseBtn.addEventListener('click', () => startNoise());
-  stopNoiseBtn.addEventListener('click', () => stopNoise());
-  startListenBtn.addEventListener('click', () => startListening());
-  stopListenBtn.addEventListener('click', () => stopListening());
+  // Initial UI state
+  updateStatusLabel();
+  updateButtonsUI();
 
-  wakeCB.addEventListener('change', async () => {
-    if(wakeCB.checked && (listening || noiseOn)) {
-      maybeAcquireWakeLock();
-    } else {
-      maybeReleaseWakeLock();
-    }
-  });
-
-  logStartBtn.addEventListener('click', () => startLogging());
-  logStopBtn.addEventListener('click', () => stopLogging());
-  logDownloadBtn.addEventListener('click', () => downloadCSV());
-
-  routeEl.textContent = 'iPhone → Bluetooth (A2DP)';
 })();
 </script>
 </body>
