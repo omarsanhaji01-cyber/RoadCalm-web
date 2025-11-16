@@ -28,6 +28,8 @@
   canvas { width: 100%; height: 160px; background: #0b0f13; border-radius: 12px; }
   .small { font-size: 12px; color: var(--sub); }
   .spacer { height: 6px; }
+  ul { padding-left: 18px; margin: 6px 0; }
+  b { color: #e7f1ff; }
 </style>
 </head>
 <body>
@@ -35,6 +37,7 @@
   <div class="title">RoadCalm (Web)</div>
 
   <div class="grid">
+    <!-- LEFT CARD: controls + meters -->
     <div class="card">
       <div class="row">
         <div>
@@ -85,20 +88,93 @@
       </div>
     </div>
 
+    <!-- RIGHT CARD: spectrum -->
     <div class="card">
       <div class="muted">Spectrum (approx.)</div>
       <canvas id="scope" width="800" height="200"></canvas>
-      <div class="small">If spectrum freezes after screen lock on some iPhones, tap Start again (WebAudio wake-up quirk).</div>
+      <div class="small">
+        When the masker is ON, the bars should look more “filled in” and smoother across the band,
+        especially in the low-frequency region where the road noise lives.
+      </div>
     </div>
   </div>
 
+  <!-- LOGGING CARD -->
+  <div class="card" style="margin-top:16px">
+    <div class="muted">Logging & testing</div>
+    <div class="small" id="logStatus">Not logging</div>
+    <div class="spacer"></div>
+    <div class="row" style="gap:12px">
+      <button id="logStart" class="btn secondary full">Start logging</button>
+      <button id="logStop" class="btn secondary full" disabled>Stop logging</button>
+    </div>
+    <div class="spacer"></div>
+    <button id="logDownload" class="btn full" disabled>Download CSV</button>
+    <div class="small" style="margin-top:6px;">
+      For a highway test: tap <b>Start</b> (top), then <b>Start logging</b>, drive 20–60 seconds, then <b>Stop logging</b> and
+      <b>Download CSV</b>. Save the file to the Files app and share it.
+    </div>
+  </div>
+
+  <!-- TIPS CARD -->
   <div class="card" style="margin-top:16px">
     <div class="muted">Tips</div>
     <ul class="small">
       <li>Pair iPhone → Car via Bluetooth <b>first</b>. Then open this page and tap <b>Start</b>.</li>
-      <li>Keep level modest (−35 to −25 dB). You should barely notice the masker.</li>
-      <li>If conversation feels harder, enable <b>Voice ducking</b> (on by default).</li>
-      <li>Installed as a Home Screen app it behaves more like a native app (PWA).</li>
+      <li>Keep level modest (−35 to −25 dB). You should barely notice the masker; the cabin should feel smoother, not louder.</li>
+      <li>If conversation feels harder, keep <b>Voice-aware ducking</b> enabled so the masker drops while you speak.</li>
+      <li>Add this page to your Home Screen (Share → <b>Add to Home Screen</b>) to make it feel more like a native app.</li>
+    </ul>
+  </div>
+
+  <!-- EXPLANATION CARD -->
+  <div class="card" style="margin-top:16px; margin-bottom:8px;">
+    <div class="muted">What am I seeing? (and what the code is doing)</div>
+    <ul class="small">
+      <li><b>Pink noise</b>: Energy decreases slowly at higher frequencies (more energy in bass/mids, less in treble).
+        This sounds smooth and natural and is a great all-around masker for most cars.</li>
+
+      <li><b>Brown noise</b>: Much deeper and heavier. It has a lot of low-frequency energy (rumble region).
+        Best for masking <b>tire hum</b>, <b>road rumble</b>, and <b>wind buffeting</b>, especially in louder cabins.</li>
+
+      <li><b>Gray noise</b>: Shaped so all frequencies are perceived as similar loudness to the human ear.
+        It feels “even” and airy. Good for quieter cars or EVs where the noise is more high-frequency than bassy.</li>
+
+      <li><b>Cabin (RMS)</b>: A rolling average of how strong the sound is at the iPhone mic, measured in
+        <b>dBFS</b> (decibels relative to full scale). 0 dBFS would be a clipped signal, so normal car levels
+        will be negative (for example −35 to −10 dBFS). When you switch RoadCalm ON, this number may go up a bit
+        because we’re adding low-level masking noise.</li>
+
+      <li><b>When RoadCalm is “working”:</b> With your car at a steady speed, toggle <b>Start / Stop</b>.
+        With <b>Start</b> ON, the cabin should sound smoother and less harsh / fatiguing, even if the RMS number goes up.
+        With <b>Start</b> OFF, the road noise usually feels more “raw” and spiky.</li>
+
+      <li><b>Spectrum plot</b>: Each bar shows how much energy there is at different frequencies:
+        low rumble on the left, speech and mid-range in the center, hiss/whine on the right.
+        With RoadCalm OFF, you often see sharp peaks and dips. With RoadCalm ON, the plot should look more
+        <b>filled-in and even</b>, especially in the low-to-mid range.</li>
+
+      <li><b>Voice-aware ducking</b>: The code constantly listens to the mic’s mid-band energy (roughly 200–3000 Hz,
+        where your voice lives). When it detects you talking, it smoothly reduces the masker level (up to about −12 dB)
+        so passengers and phone calls can hear you more clearly.</li>
+
+      <li><b>Logging</b>: Every ~0.25 s the code can record a row with timestamp, RMS dB, noise type,
+        level, ducking gain, and 16 coarse spectrum bands. The <b>Download CSV</b> button bundles those rows into a file
+        you can open in Excel, Google Sheets, or send to someone for analysis (for example, comparing different speeds,
+        tire types, or settings).</li>
+
+      <li><b>Under the hood (high-level view):</b>
+        <ul>
+          <li>The page uses the browser’s <b>Web Audio API</b> to create a small audio graph.</li>
+          <li>A custom “noise generator” node produces Pink/Brown/Gray noise samples in real time.</li>
+          <li>That noise passes through a gain node (controlled by the Level slider and ducking) and then out to
+              whatever audio route the phone is using (ideally Bluetooth to the car).</li>
+          <li>The microphone stream is sent into <b>Analyser</b> nodes. One analyser feeds the RMS meter and ducking logic;
+              another feeds the spectrum visualiser and the logged spectrum values.</li>
+          <li>An animation loop redraws the spectrum and updates FPS/RMS on screen. A timer periodically samples the latest
+              values and saves them to the log buffer for CSV download.</li>
+        </ul>
+      </li>
     </ul>
   </div>
 </div>
@@ -118,15 +194,30 @@
   const fpsEl    = document.getElementById('fps');
   const scope    = document.getElementById('scope');
   const ctx2d    = scope.getContext('2d');
+  const routeEl  = document.getElementById('route');
+
+  const logStatusEl   = document.getElementById('logStatus');
+  const logStartBtn   = document.getElementById('logStart');
+  const logStopBtn    = document.getElementById('logStop');
+  const logDownloadBtn= document.getElementById('logDownload');
 
   // ---------- State ----------
-  let ac, gainNode, scriptNode, outNode;
+  let ac, gainNode, scriptNode;
   let meterAnalyser, meterData, specAnalyser, specData;
   let micStream, micSource;
   let gen = null;
   let running = false;
   let lastFrameT = performance.now(), frameCount = 0;
   let wakeLock = null;
+
+  let latestRmsDb = null;
+  let latestDuckGain = 1.0;
+
+  // Logging state
+  let logging = false;
+  let logRows = [];
+  let lastLogTime = 0;
+  const LOG_INTERVAL_MS = 250; // 4 Hz approx
 
   // Persisted settings
   const saved = JSON.parse(localStorage.getItem('rc_settings')||'{}');
@@ -185,15 +276,95 @@
   selectGen(noiseSel.value);
 
   noiseSel.onchange = () => { selectGen(noiseSel.value); saveSettings(); };
-  gainSl.oninput = () => { gainVal.textContent = gainSl.value + " dB"; if(gainNode) gainNode.gain.value = dbToGain(parseFloat(gainSl.value)); saveSettings(); };
+  gainSl.oninput = () => {
+    gainVal.textContent = gainSl.value + " dB";
+    if(gainNode) gainNode.gain.value = dbToGain(parseFloat(gainSl.value));
+    saveSettings();
+  };
   duckCB.onchange = () => saveSettings();
+
+  // ---------- Logging helpers ----------
+  function setLoggingUI(on) {
+    logging = on;
+    logStatusEl.textContent = on ? "Logging… rows: " + (logRows.length-1) : "Not logging";
+    logStartBtn.disabled = on;
+    logStopBtn.disabled  = !on;
+    logDownloadBtn.disabled = (logRows.length <= 1);
+  }
+
+  function startLogging() {
+    logRows = [];
+    // header
+    const header = [
+      "timestamp_ms",
+      "rms_dbfs",
+      "noise_type",
+      "gain_db",
+      "duck_gain"
+    ];
+    // 16 coarse spectral bands
+    for(let i=0;i<16;i++) header.push("band_"+i);
+    logRows.push(header);
+    lastLogTime = performance.now();
+    setLoggingUI(true);
+  }
+
+  function stopLogging() {
+    setLoggingUI(false);
+  }
+
+  function tryLogRow(nowMs) {
+    if(!logging) return;
+    if(nowMs - lastLogTime < LOG_INTERVAL_MS) return;
+    lastLogTime = nowMs;
+
+    const ts = Date.now();
+    const rms = (latestRmsDb==null ? "" : latestRmsDb.toFixed(2));
+    const noiseType = noiseSel.value;
+    const gainDb = parseFloat(gainSl.value);
+    const duck = latestDuckGain;
+
+    const row = [ts, rms, noiseType, gainDb.toFixed(1), duck.toFixed(3)];
+
+    // add 16 coarse spectrum values if available
+    if(specData) {
+      const bins = specData.length;
+      const step = Math.floor(bins / 16);
+      for(let i=0;i<16;i++){
+        const idx = i*step;
+        const v = specData[idx] / 255; // 0..1
+        row.push(v.toFixed(4));
+      }
+    } else {
+      for(let i=0;i<16;i++) row.push("");
+    }
+
+    logRows.push(row);
+    logStatusEl.textContent = "Logging… rows: " + (logRows.length-1);
+    logDownloadBtn.disabled = false;
+  }
+
+  function downloadCSV() {
+    if(logRows.length <= 1) return;
+    let csv = "";
+    logRows.forEach(r => { csv += r.join(",") + "\n"; });
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g,"-");
+    a.href = url;
+    a.download = "RoadCalmLog_"+stamp+".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   // ---------- Audio graph ----------
   async function startAudio(){
     if(running) return;
     running = true;
 
-    // User gesture unlocks audio on iOS
     ac = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
 
     // Output chain
@@ -223,11 +394,11 @@
         let sum = 0;
         for(let i=0;i<arr.length;i++){ sum += arr[i]*arr[i]; }
         const rms = Math.sqrt(sum/arr.length);
-        // Threshold & smoothing
         const target = rms > 0.02 ? 0.25 : 1.0; // -12 dB when speaking
         const atk=0.2, rel=0.02;
         duckGain = duckGain + (target - duckGain) * (target < duckGain ? atk : rel);
       }
+      latestDuckGain = duckGain;
     };
 
     scriptNode.connect(gainNode);
@@ -295,8 +466,8 @@
     if(!running) return;
     requestAnimationFrame(drawLoop);
 
-    frameCount++;
     const now = performance.now();
+    frameCount++;
     if(now - lastFrameT >= 1000){
       fpsEl.textContent = frameCount.toString();
       frameCount=0; lastFrameT = now;
@@ -308,9 +479,11 @@
       let sum=0; for(let i=0;i<meterData.length;i++) sum += meterData[i]*meterData[i];
       const rms = Math.sqrt(sum/meterData.length);
       const db = 20*Math.log10(Math.max(rms,1e-7));
+      latestRmsDb = db;
       rmsEl.textContent = db.toFixed(1) + ' dBFS';
     } else {
       rmsEl.textContent = '—';
+      latestRmsDb = null;
     }
 
     // Spectrum
@@ -328,6 +501,9 @@
         ctx2d.fillRect(x, H - h, (W/bars)-2, h);
       }
     }
+
+    // Logging at fixed interval
+    tryLogRow(now);
   }
 
   // ---------- Events ----------
@@ -343,8 +519,12 @@
     }
   });
 
+  logStartBtn.addEventListener('click', () => startLogging());
+  logStopBtn.addEventListener('click', () => stopLogging());
+  logDownloadBtn.addEventListener('click', () => downloadCSV());
+
   // Route hint
-  document.getElementById('route').textContent = 'iPhone → Bluetooth (A2DP)';
+  routeEl.textContent = 'iPhone → Bluetooth (A2DP)';
 
 })();
 </script>
