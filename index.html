@@ -76,8 +76,9 @@
         </div>
         <div>
           <label for="gain">Level (dB)</label>
-          <input id="gain" type="range" min="-40" max="-15" step="1" value="-32" />
-          <div class="small" id="gainVal">-32 dB</div>
+          <!-- NEW RANGE: -45 to -5, default -25 -->
+          <input id="gain" type="range" min="-45" max="-5" step="1" value="-25" />
+          <div class="small" id="gainVal">-25 dB</div>
         </div>
       </div>
 
@@ -134,8 +135,8 @@
     <div class="muted">Tips</div>
     <ul class="small">
       <li>Pair iPhone → Car via Bluetooth <b>first</b>. Then open this page and tap <b>Start noise</b>.</li>
-      <li>Keep level modest (−35 to −25 dB). You should barely notice the masker; the cabin should feel smoother, not louder.</li>
-      <li>If conversation feels harder, keep <b>Voice-aware ducking</b> enabled so the masker drops while you speak.</li>
+      <li>In the car, a good starting point is around <b>-30 to -22 dB</b>, then adjust by feel.</li>
+      <li>You do <b>not</b> want the noise louder than the road; just enough that turning it OFF makes the cabin feel harsher.</li>
       <li>Add this page to your Home Screen (Share → <b>Add to Home Screen</b>) to make it feel more like a native app.</li>
     </ul>
   </div>
@@ -329,7 +330,6 @@
 
   function startLogging() {
     logRows = [];
-    // header
     const header = [
       "timestamp_ms",
       "rms_dbfs",
@@ -337,7 +337,6 @@
       "gain_db",
       "duck_gain"
     ];
-    // 16 coarse spectral bands
     for(let i=0;i<16;i++) header.push("band_"+i);
     logRows.push(header);
     lastLogTime = performance.now();
@@ -361,13 +360,12 @@
 
     const row = [ts, rms, noiseType, gainDb.toFixed(1), duck.toFixed(3)];
 
-    // add 16 coarse spectrum values if available
     if(specData) {
       const bins = specData.length;
       const step = Math.floor(bins / 16);
       for(let i=0;i<16;i++){
         const idx = i*step;
-        const v = specData[idx] / 255; // 0..1
+        const v = specData[idx] / 255;
         row.push(v.toFixed(4));
       }
     } else {
@@ -414,7 +412,7 @@
   }
 
   async function maybeReleaseWakeLock(){
-    if(listening || noiseOn) return; // still active
+    if(listening || noiseOn) return;
     if(wakeLock){
       try { await wakeLock.release(); } catch(e){}
       wakeLock = null;
@@ -444,14 +442,13 @@
         R[i] = s * g;
       }
 
-      // simple ducking envelope driven by mic analyser RMS
       if(duckCB.checked && meterAnalyser){
         const arr = meterData;
         meterAnalyser.getFloatTimeDomainData(arr);
         let sum = 0;
         for(let i=0;i<arr.length;i++){ sum += arr[i]*arr[i]; }
         const rms = Math.sqrt(sum/arr.length);
-        const target = rms > 0.02 ? 0.25 : 1.0; // -12 dB when speaking
+        const target = rms > 0.02 ? 0.25 : 1.0;
         const atk=0.2, rel=0.02;
         duckGain = duckGain + (target - duckGain) * (target < duckGain ? atk : rel);
       }
@@ -467,7 +464,6 @@
     updateStatusLabel();
     maybeAcquireWakeLock();
 
-    // Media Session
     if('mediaSession' in navigator){
       navigator.mediaSession.metadata = new MediaMetadata({ title: 'RoadCalm', artist: 'Masking noise', album: 'In-car' });
       navigator.mediaSession.setActionHandler('play', () => startNoise());
@@ -516,7 +512,7 @@
       micSource.connect(specAnalyser);
     } catch(err){
       console.warn("Mic unavailable (permissions denied?). Listening/spectrum disabled.", err);
-      return; // if we can't get the mic, don't flip listening=true
+      return;
     }
 
     listening = true;
@@ -566,7 +562,6 @@
       frameCount=0; lastFrameT = now;
     }
 
-    // Meter RMS
     if(meterAnalyser && meterData){
       meterAnalyser.getFloatTimeDomainData(meterData);
       let sum=0; for(let i=0;i<meterData.length;i++) sum += meterData[i]*meterData[i];
@@ -579,7 +574,6 @@
       latestRmsDb = null;
     }
 
-    // Spectrum
     ctx2d.clearRect(0,0,scope.width,scope.height);
     if(specAnalyser && specData){
       specAnalyser.getByteFrequencyData(specData);
@@ -595,7 +589,6 @@
       }
     }
 
-    // Logging at fixed interval
     tryLogRow(now);
   }
 
@@ -617,9 +610,7 @@
   logStopBtn.addEventListener('click', () => stopLogging());
   logDownloadBtn.addEventListener('click', () => downloadCSV());
 
-  // Route hint
   routeEl.textContent = 'iPhone → Bluetooth (A2DP)';
-
 })();
 </script>
 </body>
