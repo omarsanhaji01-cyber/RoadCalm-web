@@ -49,11 +49,21 @@
           <div id="route" class="small">Use iPhone → Bluetooth</div>
         </div>
       </div>
+
+      <!-- Noise controls -->
       <div class="spacer"></div>
       <div class="row" style="gap:12px">
-        <button id="startBtn" class="btn full">Start</button>
-        <button id="stopBtn" class="btn secondary full" disabled>Stop</button>
+        <button id="startNoiseBtn" class="btn full">Start noise</button>
+        <button id="stopNoiseBtn" class="btn secondary full" disabled>Stop noise</button>
       </div>
+
+      <!-- Listening controls -->
+      <div class="spacer"></div>
+      <div class="row" style="gap:12px">
+        <button id="startListenBtn" class="btn secondary full">Start listening</button>
+        <button id="stopListenBtn" class="btn secondary full" disabled>Stop listening</button>
+      </div>
+
       <div class="spacer"></div>
       <div class="row" style="gap:12px">
         <div>
@@ -70,11 +80,13 @@
           <div class="small" id="gainVal">-32 dB</div>
         </div>
       </div>
+
       <div class="spacer"></div>
       <div class="row">
         <label><input type="checkbox" id="duck" checked /> Voice-aware ducking</label>
         <label><input type="checkbox" id="wake" /> Keep screen awake</label>
       </div>
+
       <div class="spacer"></div>
       <div class="row">
         <div>
@@ -84,6 +96,7 @@
         <div class="right">
           <div class="muted">FPS</div>
           <div class="stat" id="fps">—</div>
+          <div class="small">FPS = frames per second (how often the graph updates)</div>
         </div>
       </div>
     </div>
@@ -111,8 +124,8 @@
     <div class="spacer"></div>
     <button id="logDownload" class="btn full" disabled>Download CSV</button>
     <div class="small" style="margin-top:6px;">
-      For a highway test: tap <b>Start</b> (top), then <b>Start logging</b>, drive 20–60 seconds, then <b>Stop logging</b> and
-      <b>Download CSV</b>. Save the file to the Files app and share it.
+      For a highway test: tap <b>Start noise</b> and <b>Start listening</b>, then <b>Start logging</b>,
+      drive 20–60 seconds, then <b>Stop logging</b> and <b>Download CSV</b>. Save the file to the Files app and share it.
     </div>
   </div>
 
@@ -120,7 +133,7 @@
   <div class="card" style="margin-top:16px">
     <div class="muted">Tips</div>
     <ul class="small">
-      <li>Pair iPhone → Car via Bluetooth <b>first</b>. Then open this page and tap <b>Start</b>.</li>
+      <li>Pair iPhone → Car via Bluetooth <b>first</b>. Then open this page and tap <b>Start noise</b>.</li>
       <li>Keep level modest (−35 to −25 dB). You should barely notice the masker; the cabin should feel smoother, not louder.</li>
       <li>If conversation feels harder, keep <b>Voice-aware ducking</b> enabled so the masker drops while you speak.</li>
       <li>Add this page to your Home Screen (Share → <b>Add to Home Screen</b>) to make it feel more like a native app.</li>
@@ -145,14 +158,17 @@
         will be negative (for example −35 to −10 dBFS). When you switch RoadCalm ON, this number may go up a bit
         because we’re adding low-level masking noise.</li>
 
-      <li><b>When RoadCalm is “working”:</b> With your car at a steady speed, toggle <b>Start / Stop</b>.
-        With <b>Start</b> ON, the cabin should sound smoother and less harsh / fatiguing, even if the RMS number goes up.
-        With <b>Start</b> OFF, the road noise usually feels more “raw” and spiky.</li>
+      <li><b>When RoadCalm is “working”:</b> With your car at a steady speed, toggle <b>Start noise</b> ON/OFF.
+        With noise ON, the cabin should sound smoother and less harsh / fatiguing, even if the RMS number goes up.
+        With noise OFF, the road noise usually feels more “raw” and spiky.</li>
 
       <li><b>Spectrum plot</b>: Each bar shows how much energy there is at different frequencies:
         low rumble on the left, speech and mid-range in the center, hiss/whine on the right.
-        With RoadCalm OFF, you often see sharp peaks and dips. With RoadCalm ON, the plot should look more
+        With noise OFF, you often see sharp peaks and dips. With noise ON, the plot should look more
         <b>filled-in and even</b>, especially in the low-to-mid range.</li>
+
+      <li><b>FPS</b>: Frames per second – how often the display and spectrum graph update. Values around 20–30 are normal;
+        it doesn’t affect the audio, just how smooth the visual feels.</li>
 
       <li><b>Voice-aware ducking</b>: The code constantly listens to the mic’s mid-band energy (roughly 200–3000 Hz,
         where your voice lives). When it detects you talking, it smoothly reduces the masker level (up to about −12 dB)
@@ -169,7 +185,7 @@
           <li>A custom “noise generator” node produces Pink/Brown/Gray noise samples in real time.</li>
           <li>That noise passes through a gain node (controlled by the Level slider and ducking) and then out to
               whatever audio route the phone is using (ideally Bluetooth to the car).</li>
-          <li>The microphone stream is sent into <b>Analyser</b> nodes. One analyser feeds the RMS meter and ducking logic;
+          <li>If you tap <b>Start listening</b>, the microphone stream is sent into <b>Analyser</b> nodes. One analyser feeds the RMS meter and ducking logic;
               another feeds the spectrum visualiser and the logged spectrum values.</li>
           <li>An animation loop redraws the spectrum and updates FPS/RMS on screen. A timer periodically samples the latest
               values and saves them to the log buffer for CSV download.</li>
@@ -182,8 +198,11 @@
 <script>
 (() => {
   // ---------- UI elements ----------
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn  = document.getElementById('stopBtn');
+  const startNoiseBtn  = document.getElementById('startNoiseBtn');
+  const stopNoiseBtn   = document.getElementById('stopNoiseBtn');
+  const startListenBtn = document.getElementById('startListenBtn');
+  const stopListenBtn  = document.getElementById('stopListenBtn');
+
   const noiseSel = document.getElementById('noise');
   const gainSl   = document.getElementById('gain');
   const gainVal  = document.getElementById('gainVal');
@@ -202,11 +221,18 @@
   const logDownloadBtn= document.getElementById('logDownload');
 
   // ---------- State ----------
-  let ac, gainNode, scriptNode;
-  let meterAnalyser, meterData, specAnalyser, specData;
-  let micStream, micSource;
+  let ac = null;
+  let gainNode = null;
+  let scriptNode = null;
+
+  let meterAnalyser = null, meterData = null;
+  let specAnalyser = null, specData = null;
+  let micStream = null, micSource = null;
+
   let gen = null;
-  let running = false;
+  let listening = false;
+  let noiseOn   = false;
+  let animating = false;
   let lastFrameT = performance.now(), frameCount = 0;
   let wakeLock = null;
 
@@ -235,6 +261,15 @@
   }
 
   function dbToGain(db){ return Math.pow(10, db/20); }
+
+  async function ensureAudioContext(){
+    if(!ac){
+      ac = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    }
+    if(ac.state === 'suspended'){
+      await ac.resume();
+    }
+  }
 
   // ---------- Noise generators ----------
   function makePink() {
@@ -360,18 +395,40 @@
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Audio graph ----------
-  async function startAudio(){
-    if(running) return;
-    running = true;
+  // ---------- Status / wake helpers ----------
+  function updateStatusLabel(){
+    let text = "Stopped";
+    if(listening && noiseOn) text = "Listening + Noise";
+    else if(noiseOn) text = "Noise only";
+    else if(listening) text = "Listening only";
 
-    ac = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    statusEl.textContent = text;
+    statusEl.style.color = (listening || noiseOn) ? '#8bd17c' : '#90a4b7';
+  }
 
-    // Output chain
+  async function maybeAcquireWakeLock(){
+    if(!wakeCB.checked) return;
+    if(!('wakeLock' in navigator)) return;
+    if(wakeLock) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+  }
+
+  async function maybeReleaseWakeLock(){
+    if(listening || noiseOn) return; // still active
+    if(wakeLock){
+      try { await wakeLock.release(); } catch(e){}
+      wakeLock = null;
+    }
+  }
+
+  // ---------- Start/stop noise ----------
+  async function startNoise(){
+    if(noiseOn) return;
+    await ensureAudioContext();
+
     gainNode = ac.createGain();
     gainNode.gain.value = dbToGain(parseFloat(gainSl.value));
 
-    // Script node to generate noise (mono → stereo)
     const bufSize = 1024;
     scriptNode = ac.createScriptProcessor(bufSize, 0, 2);
     let duckGain = 1.0;
@@ -404,12 +461,50 @@
     scriptNode.connect(gainNode);
     gainNode.connect(ac.destination);
 
-    // Meter & spectrum (from mic)
+    noiseOn = true;
+    startNoiseBtn.disabled = true;
+    stopNoiseBtn.disabled  = false;
+    updateStatusLabel();
+    maybeAcquireWakeLock();
+
+    // Media Session
+    if('mediaSession' in navigator){
+      navigator.mediaSession.metadata = new MediaMetadata({ title: 'RoadCalm', artist: 'Masking noise', album: 'In-car' });
+      navigator.mediaSession.setActionHandler('play', () => startNoise());
+      navigator.mediaSession.setActionHandler('pause', () => stopNoise());
+    }
+  }
+
+  async function stopNoise(){
+    if(!noiseOn) return;
+    try { scriptNode && scriptNode.disconnect(); } catch(e){}
+    try { gainNode && gainNode.disconnect(); } catch(e){}
+
+    scriptNode = null;
+    gainNode = null;
+    noiseOn = false;
+    startNoiseBtn.disabled = false;
+    stopNoiseBtn.disabled  = true;
+    updateStatusLabel();
+    maybeReleaseWakeLock();
+  }
+
+  // ---------- Start/stop listening ----------
+  async function startListening(){
+    if(listening) return;
+    await ensureAudioContext();
+
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false }});
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation:false,
+          noiseSuppression:false,
+          autoGainControl:false
+        }
+      });
       micSource = ac.createMediaStreamSource(micStream);
 
-      meterAnalyser = ac.createAnalyser(); // time-domain for RMS/duck
+      meterAnalyser = ac.createAnalyser();
       meterAnalyser.fftSize = 2048;
       meterData = new Float32Array(meterAnalyser.fftSize);
 
@@ -420,50 +515,48 @@
       micSource.connect(meterAnalyser);
       micSource.connect(specAnalyser);
     } catch(err){
-      console.warn("Mic unavailable (permissions denied?). Voice ducking & meters disabled.", err);
-      meterAnalyser = null; specAnalyser = null;
+      console.warn("Mic unavailable (permissions denied?). Listening/spectrum disabled.", err);
+      return; // if we can't get the mic, don't flip listening=true
     }
 
-    // Media Session (lockscreen play/pause)
-    if('mediaSession' in navigator){
-      navigator.mediaSession.metadata = new MediaMetadata({ title: 'RoadCalm', artist: 'Masking noise', album: 'In-car' });
-      navigator.mediaSession.setActionHandler('play', () => startAudio());
-      navigator.mediaSession.setActionHandler('pause', () => stopAudio());
-    }
+    listening = true;
+    startListenBtn.disabled = true;
+    stopListenBtn.disabled  = false;
+    updateStatusLabel();
+    maybeAcquireWakeLock();
 
-    // Wake lock
-    if(wakeCB.checked && 'wakeLock' in navigator){
-      try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+    if(!animating){
+      animating = true;
+      drawLoop();
     }
-
-    updateUI(true);
-    drawLoop();
   }
 
-  async function stopAudio(){
-    if(!running) return;
-    running = false;
+  async function stopListening(){
+    if(!listening) return;
 
-    try { scriptNode && scriptNode.disconnect(); } catch(e){}
-    try { gainNode && gainNode.disconnect(); } catch(e){}
     try { micSource && micSource.disconnect(); } catch(e){}
     try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch(e){}
-    try { await ac.close(); } catch(e){}
 
-    if(wakeLock){ try { await wakeLock.release(); } catch(e){}; wakeLock=null; }
-    updateUI(false);
-  }
+    micSource = null;
+    micStream = null;
+    meterAnalyser = null;
+    specAnalyser = null;
+    meterData = null;
+    specData = null;
 
-  function updateUI(isOn){
-    statusEl.textContent = isOn ? 'Running' : 'Stopped';
-    statusEl.style.color = isOn ? '#8bd17c' : '#90a4b7';
-    startBtn.disabled = isOn;
-    stopBtn.disabled  = !isOn;
+    listening = false;
+    startListenBtn.disabled = false;
+    stopListenBtn.disabled  = true;
+    updateStatusLabel();
+    maybeReleaseWakeLock();
   }
 
   // ---------- Drawing ----------
   function drawLoop(){
-    if(!running) return;
+    if(!listening){
+      animating = false;
+      return;
+    }
     requestAnimationFrame(drawLoop);
 
     const now = performance.now();
@@ -474,7 +567,7 @@
     }
 
     // Meter RMS
-    if(meterAnalyser){
+    if(meterAnalyser && meterData){
       meterAnalyser.getFloatTimeDomainData(meterData);
       let sum=0; for(let i=0;i<meterData.length;i++) sum += meterData[i]*meterData[i];
       const rms = Math.sqrt(sum/meterData.length);
@@ -488,7 +581,7 @@
 
     // Spectrum
     ctx2d.clearRect(0,0,scope.width,scope.height);
-    if(specAnalyser){
+    if(specAnalyser && specData){
       specAnalyser.getByteFrequencyData(specData);
       const W = scope.width, H = scope.height;
       const bars = 96;
@@ -507,15 +600,16 @@
   }
 
   // ---------- Events ----------
-  startBtn.addEventListener('click', startAudio);
-  stopBtn.addEventListener('click', stopAudio);
+  startNoiseBtn.addEventListener('click', () => startNoise());
+  stopNoiseBtn.addEventListener('click', () => stopNoise());
+  startListenBtn.addEventListener('click', () => startListening());
+  stopListenBtn.addEventListener('click', () => stopListening());
 
   wakeCB.addEventListener('change', async () => {
-    if(wakeCB.checked && running && 'wakeLock' in navigator) {
-      try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
-    } else if(wakeLock){
-      try { await wakeLock.release(); } catch(e){}
-      wakeLock = null;
+    if(wakeCB.checked && (listening || noiseOn)) {
+      maybeAcquireWakeLock();
+    } else {
+      maybeReleaseWakeLock();
     }
   });
 
