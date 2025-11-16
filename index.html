@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>RoadCalm Web</title>
+<style>
+  :root {
+    --bg: #0f1216; --card:#161b22; --txt:#e6eef6; --sub:#90a4b7; --acc:#4ea1ff;
+  }
+  html, body { background: var(--bg); color: var(--txt); margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
+  .title { font-size: 28px; font-weight: 800; letter-spacing: .3px; margin: 8px 0 16px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media(min-width: 840px){ .grid{ grid-template-columns: 1fr 1fr; } }
+  .card { background: var(--card); border: 1px solid #232b35; border-radius: 16px; padding: 16px; }
+  .row { display:flex; gap:12px; align-items:center; justify-content: space-between; }
+  .row > * { flex: 1; }
+  .btn { background: var(--acc); color: #001324; font-weight: 700; border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer; }
+  .btn.secondary { background: #263140; color: var(--txt); }
+  .btn.full { width: 100%; }
+  label { font-size: 14px; color: var(--sub); display:block; margin-bottom: 6px; }
+  select, input[type="range"] { width: 100%; }
+  .pill { color: #8bd17c; font-size: 12px; border:1px solid #2e3d2e; padding:4px 8px; border-radius: 999px; }
+  .muted { color: var(--sub); font-size: 14px; }
+  .stat { font-size: 40px; font-weight: 800; }
+  .right { text-align: right; }
+  canvas { width: 100%; height: 160px; background: #0b0f13; border-radius: 12px; }
+  .small { font-size: 12px; color: var(--sub); }
+  .spacer { height: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">RoadCalm (Web)</div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="row">
+        <div>
+          <div class="muted">Status</div>
+          <div id="status" class="pill">Stopped</div>
+        </div>
+        <div class="right">
+          <div class="muted">Output route</div>
+          <div id="route" class="small">Use iPhone → Bluetooth</div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div class="row" style="gap:12px">
+        <button id="startBtn" class="btn full">Start</button>
+        <button id="stopBtn" class="btn secondary full" disabled>Stop</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="row" style="gap:12px">
+        <div>
+          <label for="noise">Noise type</label>
+          <select id="noise">
+            <option value="pink" selected>Pink (balanced)</option>
+            <option value="brown">Brown (deep)</option>
+            <option value="gray">Gray (even-loudness)</option>
+          </select>
+        </div>
+        <div>
+          <label for="gain">Level (dB)</label>
+          <input id="gain" type="range" min="-40" max="-15" step="1" value="-32" />
+          <div class="small" id="gainVal">-32 dB</div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div class="row">
+        <label><input type="checkbox" id="duck" checked /> Voice-aware ducking</label>
+        <label><input type="checkbox" id="wake" /> Keep screen awake</label>
+      </div>
+      <div class="spacer"></div>
+      <div class="row">
+        <div>
+          <div class="muted">Cabin (RMS)</div>
+          <div class="stat" id="rms">—</div>
+        </div>
+        <div class="right">
+          <div class="muted">FPS</div>
+          <div class="stat" id="fps">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="muted">Spectrum (approx.)</div>
+      <canvas id="scope" width="800" height="200"></canvas>
+      <div class="small">If spectrum freezes after screen lock on some iPhones, tap Start again (WebAudio wake-up quirk).</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="muted">Tips</div>
+    <ul class="small">
+      <li>Pair iPhone → Car via Bluetooth <b>first</b>. Then open this page and tap <b>Start</b>.</li>
+      <li>Keep level modest (−35 to −25 dB). You should barely notice the masker.</li>
+      <li>If conversation feels harder, enable <b>Voice ducking</b> (on by default).</li>
+      <li>Installed as a Home Screen app it behaves more like a native app (PWA).</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- UI elements ----------
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn  = document.getElementById('stopBtn');
+  const noiseSel = document.getElementById('noise');
+  const gainSl   = document.getElementById('gain');
+  const gainVal  = document.getElementById('gainVal');
+  const duckCB   = document.getElementById('duck');
+  const wakeCB   = document.getElementById('wake');
+  const statusEl = document.getElementById('status');
+  const rmsEl    = document.getElementById('rms');
+  const fpsEl    = document.getElementById('fps');
+  const scope    = document.getElementById('scope');
+  const ctx2d    = scope.getContext('2d');
+
+  // ---------- State ----------
+  let ac, gainNode, scriptNode, outNode;
+  let meterAnalyser, meterData, specAnalyser, specData;
+  let micStream, micSource;
+  let gen = null;
+  let running = false;
+  let lastFrameT = performance.now(), frameCount = 0;
+  let wakeLock = null;
+
+  // Persisted settings
+  const saved = JSON.parse(localStorage.getItem('rc_settings')||'{}');
+  if(saved.noise) noiseSel.value = saved.noise;
+  if(saved.gain)  gainSl.value = saved.gain;
+  if(saved.duck!==undefined) duckCB.checked = saved.duck;
+  gainVal.textContent = gainSl.value + " dB";
+
+  function saveSettings(){
+    localStorage.setItem('rc_settings', JSON.stringify({
+      noise: noiseSel.value,
+      gain: gainSl.value,
+      duck: duckCB.checked
+    }));
+  }
+
+  function dbToGain(db){ return Math.pow(10, db/20); }
+
+  // ---------- Noise generators ----------
+  function makePink() {
+    const st = { b0:0,b1:0,b2:0,b3:0,b4:0,b5:0,b6:0 };
+    return () => {
+      const w = Math.random()*2-1;
+      st.b0 = 0.99886*st.b0 + w*0.0555179;
+      st.b1 = 0.99332*st.b1 + w*0.0750759;
+      st.b2 = 0.96900*st.b2 + w*0.1538520;
+      st.b3 = 0.86650*st.b3 + w*0.3104856;
+      st.b4 = 0.55000*st.b4 + w*0.5329522;
+      st.b5 = -0.7616*st.b5 - w*0.0168980;
+      const pink = st.b0+st.b1+st.b2+st.b3+st.b4+st.b5+st.b6 + w*0.5362;
+      st.b6 = w*0.115926;
+      return pink*0.11;
+    };
+  }
+  function makeBrown() {
+    const st = { y:0 };
+    return () => { const w = Math.random()*2-1; st.y += 0.02*w; st.y *= 0.996; return st.y; };
+  }
+  // Gray ≈ pink + light high-shelf
+  function makeGray() {
+    const pink = makePink();
+    let prev = 0;
+    return () => {
+      const p = pink();
+      const hp = 0.97*prev + 0.03*(p - prev); // gentle high-pass blend
+      prev = hp;
+      return 0.7*p + 0.3*hp;
+    }
+  }
+
+  function selectGen(kind){
+    if(kind==='pink') gen = makePink();
+    else if(kind==='brown') gen = makeBrown();
+    else gen = makeGray();
+  }
+  selectGen(noiseSel.value);
+
+  noiseSel.onchange = () => { selectGen(noiseSel.value); saveSettings(); };
+  gainSl.oninput = () => { gainVal.textContent = gainSl.value + " dB"; if(gainNode) gainNode.gain.value = dbToGain(parseFloat(gainSl.value)); saveSettings(); };
+  duckCB.onchange = () => saveSettings();
+
+  // ---------- Audio graph ----------
+  async function startAudio(){
+    if(running) return;
+    running = true;
+
+    // User gesture unlocks audio on iOS
+    ac = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+
+    // Output chain
+    gainNode = ac.createGain();
+    gainNode.gain.value = dbToGain(parseFloat(gainSl.value));
+
+    // Script node to generate noise (mono → stereo)
+    const bufSize = 1024;
+    scriptNode = ac.createScriptProcessor(bufSize, 0, 2);
+    let duckGain = 1.0;
+
+    scriptNode.onaudioprocess = (e) => {
+      const L = e.outputBuffer.getChannelData(0);
+      const R = e.outputBuffer.getChannelData(1);
+      const g = gainNode.gain.value * (duckCB.checked ? duckGain : 1.0);
+
+      for(let i=0;i<L.length;i++){
+        const s = gen ? gen() : 0;
+        L[i] = s * g;
+        R[i] = s * g;
+      }
+
+      // simple ducking envelope driven by mic analyser RMS
+      if(duckCB.checked && meterAnalyser){
+        const arr = meterData;
+        meterAnalyser.getFloatTimeDomainData(arr);
+        let sum = 0;
+        for(let i=0;i<arr.length;i++){ sum += arr[i]*arr[i]; }
+        const rms = Math.sqrt(sum/arr.length);
+        // Threshold & smoothing
+        const target = rms > 0.02 ? 0.25 : 1.0; // -12 dB when speaking
+        const atk=0.2, rel=0.02;
+        duckGain = duckGain + (target - duckGain) * (target < duckGain ? atk : rel);
+      }
+    };
+
+    scriptNode.connect(gainNode);
+    gainNode.connect(ac.destination);
+
+    // Meter & spectrum (from mic)
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false }});
+      micSource = ac.createMediaStreamSource(micStream);
+
+      meterAnalyser = ac.createAnalyser(); // time-domain for RMS/duck
+      meterAnalyser.fftSize = 2048;
+      meterData = new Float32Array(meterAnalyser.fftSize);
+
+      specAnalyser = ac.createAnalyser();
+      specAnalyser.fftSize = 2048;
+      specData = new Uint8Array(specAnalyser.frequencyBinCount);
+
+      micSource.connect(meterAnalyser);
+      micSource.connect(specAnalyser);
+    } catch(err){
+      console.warn("Mic unavailable (permissions denied?). Voice ducking & meters disabled.", err);
+      meterAnalyser = null; specAnalyser = null;
+    }
+
+    // Media Session (lockscreen play/pause)
+    if('mediaSession' in navigator){
+      navigator.mediaSession.metadata = new MediaMetadata({ title: 'RoadCalm', artist: 'Masking noise', album: 'In-car' });
+      navigator.mediaSession.setActionHandler('play', () => startAudio());
+      navigator.mediaSession.setActionHandler('pause', () => stopAudio());
+    }
+
+    // Wake lock
+    if(wakeCB.checked && 'wakeLock' in navigator){
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+    }
+
+    updateUI(true);
+    drawLoop();
+  }
+
+  async function stopAudio(){
+    if(!running) return;
+    running = false;
+
+    try { scriptNode && scriptNode.disconnect(); } catch(e){}
+    try { gainNode && gainNode.disconnect(); } catch(e){}
+    try { micSource && micSource.disconnect(); } catch(e){}
+    try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch(e){}
+    try { await ac.close(); } catch(e){}
+
+    if(wakeLock){ try { await wakeLock.release(); } catch(e){}; wakeLock=null; }
+    updateUI(false);
+  }
+
+  function updateUI(isOn){
+    statusEl.textContent = isOn ? 'Running' : 'Stopped';
+    statusEl.style.color = isOn ? '#8bd17c' : '#90a4b7';
+    startBtn.disabled = isOn;
+    stopBtn.disabled  = !isOn;
+  }
+
+  // ---------- Drawing ----------
+  function drawLoop(){
+    if(!running) return;
+    requestAnimationFrame(drawLoop);
+
+    frameCount++;
+    const now = performance.now();
+    if(now - lastFrameT >= 1000){
+      fpsEl.textContent = frameCount.toString();
+      frameCount=0; lastFrameT = now;
+    }
+
+    // Meter RMS
+    if(meterAnalyser){
+      meterAnalyser.getFloatTimeDomainData(meterData);
+      let sum=0; for(let i=0;i<meterData.length;i++) sum += meterData[i]*meterData[i];
+      const rms = Math.sqrt(sum/meterData.length);
+      const db = 20*Math.log10(Math.max(rms,1e-7));
+      rmsEl.textContent = db.toFixed(1) + ' dBFS';
+    } else {
+      rmsEl.textContent = '—';
+    }
+
+    // Spectrum
+    ctx2d.clearRect(0,0,scope.width,scope.height);
+    if(specAnalyser){
+      specAnalyser.getByteFrequencyData(specData);
+      const W = scope.width, H = scope.height;
+      const bars = 96;
+      const step = Math.floor(specData.length / bars);
+      for(let i=0;i<bars;i++){
+        const v = specData[i*step]/255;
+        const x = (i/bars) * W;
+        const h = v * (H-8);
+        ctx2d.fillStyle = '#4ea1ff';
+        ctx2d.fillRect(x, H - h, (W/bars)-2, h);
+      }
+    }
+  }
+
+  // ---------- Events ----------
+  startBtn.addEventListener('click', startAudio);
+  stopBtn.addEventListener('click', stopAudio);
+
+  wakeCB.addEventListener('change', async () => {
+    if(wakeCB.checked && running && 'wakeLock' in navigator) {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+    } else if(wakeLock){
+      try { await wakeLock.release(); } catch(e){}
+      wakeLock = null;
+    }
+  });
+
+  // Route hint
+  document.getElementById('route').textContent = 'iPhone → Bluetooth (A2DP)';
+
+})();
+</script>
+</body>
+</html>
