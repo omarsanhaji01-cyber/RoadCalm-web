@@ -46,15 +46,15 @@
         </div>
         <div class="right">
           <div class="muted">Output route</div>
-          <div id="route" class="small">Use iPhone → Bluetooth</div>
+          <div id="route" class="small">iPhone speaker / Bluetooth (system-selected)</div>
         </div>
       </div>
 
-      <!-- BIG TOGGLE BUTTONS -->
+      <!-- BIG TOGGLE BUTTONS (LISTEN FIRST, NOISE SECOND) -->
       <div class="spacer"></div>
       <div class="row" style="flex-direction:column; gap:10px;">
-        <button id="noiseBtn" class="btn secondary full">Noise: OFF</button>
         <button id="listenBtn" class="btn secondary full">Listening: OFF</button>
+        <button id="noiseBtn" class="btn secondary full">Noise: OFF</button>
       </div>
 
       <div class="spacer"></div>
@@ -98,6 +98,19 @@
           <div class="small">FPS = frames per second (graph update rate)</div>
         </div>
       </div>
+
+      <div class="spacer"></div>
+      <div class="small">
+        <b>Note:</b> This page can’t directly pick Bluetooth.  
+        To send audio to your car / BT speaker:
+        <ol style="padding-left:18px; margin:4px 0;">
+          <li>Pair your car / speaker in iOS Settings → Bluetooth.</li>
+          <li>Swipe down for Control Center → long-press the audio tile.</li>
+          <li>Tap the AirPlay icon → choose your car / speaker.</li>
+        </ol>
+        If you still only get phone calls over Bluetooth (but music/YouTube don’t play there either),
+        your car may be paired as “phone only” instead of a media device.
+      </div>
     </div>
 
     <!-- RIGHT CARD: spectrum -->
@@ -105,7 +118,7 @@
       <div class="muted">Spectrum (approx.)</div>
       <canvas id="scope" width="800" height="200"></canvas>
       <div class="small" style="margin-top:4px;">
-        X-axis: <b>Frequency (Hz)</b> (left = bass/rumble, right = hiss/highs).
+        X-axis: <b>Frequency (Hz)</b> (left = bass/rumble, right = hiss/highs).  
         Y-axis: <b>Relative level</b> (0–1).
       </div>
       <div class="small" style="margin-top:4px;">
@@ -135,7 +148,7 @@
     <div class="spacer"></div>
     <button id="logDownload" class="btn full" disabled>Download CSV</button>
     <div class="small" style="margin-top:6px;">
-      For a drive test: toggle <b>Noise</b> and <b>Listening</b> ON, then (optionally) turn on <b>Auto adapt</b>,
+      For a drive test: toggle <b>Listening</b> and <b>Noise</b> ON, then (optionally) turn on <b>Auto adapt</b>,
       hit <b>Start logging</b>, drive 20–60 seconds, then <b>Stop logging</b> and <b>Download CSV</b>.
       Noise will be logged as <b>pink/brown/gray</b> or <b>none</b> when off.
     </div>
@@ -145,8 +158,8 @@
   <div class="card" style="margin-top:16px">
     <div class="muted">Tips</div>
     <ul class="small">
-      <li>Pair iPhone → Car via Bluetooth <b>first</b>, ideally as a <b>speaker / media device</b>, not just “phone call”. Then open this page and toggle <b>Noise</b> ON.</li>
-      <li>In the car, a good starting point is around <b>-30 to -22 dB</b>, then adjust by feel.</li>
+      <li>Pair iPhone → Car via Bluetooth <b>first</b>, ideally as a <b>speaker / media device</b>, not just “phone call”. Then open this page and toggle <b>Listening</b> &amp; <b>Noise</b> ON.</li>
+      <li>In the car, a good starting point is around <b>-30 to -22 dB</b> on the slider, then adjust by feel.</li>
       <li>With <b>Auto adapt</b> ON, the app:
         <ul>
           <li>Keeps the masker near the level you chose with the slider,</li>
@@ -185,7 +198,7 @@
         <b>dBFS</b> (decibels relative to full scale). 0 dBFS would be a clipped signal, so normal car levels
         will be negative (for example −35 to −10 dBFS).</li>
 
-      <li><b>Spectrum plot</b>: Now with axis labels:
+      <li><b>Spectrum plot</b>: With axis labels:
         <ul>
           <li><b>X-axis</b>: frequency in Hz, with ticks at ~0, 1k, 2k, 4k, 8k (exact values depend on the phone’s sample rate).</li>
           <li><b>Y-axis</b>: relative level from 0 (bottom) to 1 (top). These are normalized magnitudes from the FFT.</li>
@@ -435,7 +448,7 @@
   logStopBtn.addEventListener('click', () => stopLogging());
   logDownloadBtn.addEventListener('click', () => downloadCSV());
 
-  routeEl.textContent = 'iPhone → Bluetooth (A2DP)';
+  routeEl.textContent = 'iPhone speaker / Bluetooth (set in Control Center)';
 
   // ---------- Logging ----------
   function setLoggingUI(on) {
@@ -481,7 +494,7 @@
 
     if(specData) {
       const bins = specData.length;
-      const step = Math.floor(bins / 16);
+      const step = Math.floor(specData.length / 16);
       for(let i=0;i<16;i++){
         const idx = i*step;
         const v = specData[idx] / 255;
