@@ -137,10 +137,11 @@
       <li>In the car, a good starting point is around <b>-30 to -22 dB</b>, then adjust by feel.</li>
       <li>With <b>Auto adapt</b> ON, the app:
         <ul>
-          <li>Tries to keep the masking noise roughly ~8–10 dB below the cabin noise,</li>
+          <li>Keeps the masker near the level you chose with the slider,</li>
+          <li>Pushes it a bit louder when the cabin is louder, and a bit quieter when the cabin is quieter (within about ±8 dB around your slider),</li>
           <li>And tilts between Brown / Pink / Gray to smooth out low vs high imbalance.</li>
         </ul>
-        The slider becomes a <b>max strength / cap</b> for how loud the noise is allowed to get.</li>
+      </li>
       <li>With <b>Auto adapt</b> OFF, the color and level are exactly what you choose (manual mode).</li>
       <li>Add this page to your Home Screen (Share → <b>Add to Home Screen</b>) to make it feel more like a native app.</li>
     </ul>
@@ -164,9 +165,9 @@
         if highs dominate, it leans more <b>Brown</b> to fill lows; otherwise it tends toward <b>Pink</b>.
         This is a simple feedback loop to “flatten” the overall shape so the sound feels smoother and less fatiguing.</li>
 
-      <li><b>Auto adapt (level):</b> The app measures overall cabin level (RMS in dBFS) and tries to keep the masker
-        about <b>8–10 dB quieter</b> than whatever the cabin is at. At stop lights, when the car gets quiet, the masker fades down;
-        at speed, when the car gets louder, the masker comes up a bit. The slider sets a <b>ceiling</b> so it never gets louder than you allow.</li>
+      <li><b>Auto adapt (level):</b> The app measures overall cabin level (RMS in dBFS) and keeps the masker
+        <b>near your slider setting</b>, nudging it gently:
+        a bit louder when the cabin is loud, a bit quieter when the cabin is very quiet, but never more than about ±8 dB away from your chosen level.</li>
 
       <li><b>Cabin (RMS)</b>: A rolling average of how strong the sound is at the iPhone mic, measured in
         <b>dBFS</b> (decibels relative to full scale). 0 dBFS would be a clipped signal, so normal car levels
@@ -182,8 +183,8 @@
         where your voice lives). When it detects you talking, it smoothly reduces the masker level (up to about −12 dB)
         so passengers and phone calls can hear you more clearly.</li>
 
-      <li><b>Logging</b>: Every ~0.25 s the code records a row with timestamp, RMS dB, whether noise is <b>pink/brown/gray</b> or <b>none</b>,
-        level, ducking gain, and 16 coarse spectrum bands.</li>
+      <li><b>Logging</b>: Every ~0.25 s the code records a row with timestamp, RMS dB, whether noise is <b>pink/brown/gray</b> (manual),
+        <b>pink_auto/brown_auto/gray_auto</b> (auto), or <b>none</b> when noise is off, plus 16 coarse spectrum bands.</li>
     </ul>
   </div>
 </div>
@@ -342,7 +343,7 @@
 
   genPink = makePink();
   genBrown = makeBrown();
-  genGray = makeGray();
+  genGray  = makeGray();
 
   function selectGen(kind){
     activeNoiseKind = kind;
@@ -495,22 +496,37 @@
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Auto level ----------
+  // ---------- Auto level (NEW LOGIC) ----------
   function updateAutoGain(envDb){
     if(!autoModeCB.checked || !gainNode) return;
     const sliderDb = parseFloat(gainSl.value);
-    const margin = 10; // target ~10 dB below environment
 
-    if(envDb == null){
+    if(envDb == null || isNaN(envDb)){
+      // No environment reading yet => sit at the slider
       targetGainDb = sliderDb;
     } else {
-      let tgt = envDb - margin;
-      if(tgt > sliderDb) tgt = sliderDb;
-      tgt = Math.max(-45, Math.min(-5, tgt));
+      // Reference cabin level where slider is "just right"
+      const refEnv = -35;   // dBFS
+      const k = 0.5;        // how strongly env affects level
+
+      // Move around the slider depending on how loud the cabin is
+      let tgt = sliderDb + k * (envDb - refEnv);
+
+      // Limit how far auto can move from slider (±8 dB)
+      const maxDelta = 8;
+      const minDbAround = sliderDb - maxDelta;
+      const maxDbAround = sliderDb + maxDelta;
+      if(tgt < minDbAround) tgt = minDbAround;
+      if(tgt > maxDbAround) tgt = maxDbAround;
+
+      // Absolute safety clamp
+      if(tgt < -45) tgt = -45;
+      if(tgt > -5)  tgt = -5;
+
       targetGainDb = tgt;
     }
 
-    const alpha = 0.05;
+    const alpha = 0.05; // smoothing factor
     currentGainDb += (targetGainDb - currentGainDb) * alpha;
     gainNode.gain.value = dbToGain(currentGainDb);
   }
@@ -690,7 +706,7 @@
       frameCount=0; lastFrameT = now;
     }
 
-    // Meter RMS (BUG FIX HERE: use meterData[i] * meterData[i])
+    // Meter RMS
     if(meterAnalyser && meterData){
       meterAnalyser.getFloatTimeDomainData(meterData);
       let sum=0;
