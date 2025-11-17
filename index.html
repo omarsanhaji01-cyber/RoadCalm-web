@@ -104,9 +104,21 @@
     <div class="card">
       <div class="muted">Spectrum (approx.)</div>
       <canvas id="scope" width="800" height="200"></canvas>
-      <div class="small">
-        When the masker is ON, the bars should look more “filled in” and smoother across the band,
-        especially in the low-frequency region where the road noise lives.
+      <div class="small" style="margin-top:4px;">
+        X-axis: <b>Frequency (Hz)</b> (left = bass/rumble, right = hiss/highs).
+        Y-axis: <b>Relative level</b> (0–1).
+      </div>
+      <div class="small" style="margin-top:4px;">
+        <b>Quick legend (approximate bands):</b>
+        <ul>
+          <li><b>&lt; 200 Hz</b> → tire / road rumble, engine thump, low buffeting</li>
+          <li><b>200 – 500 Hz</b> → engine body, “boominess” of the cabin</li>
+          <li><b>500 Hz – 3 kHz</b> → speech range, a lot of “harshness” and intelligibility</li>
+          <li><b>3 – 8 kHz</b> (and up to Nyquist) → wind hiss, whines, whistles, sharp hissy noises</li>
+        </ul>
+        When RoadCalm is working well, the bars here should look a bit more
+        <b>filled in and even</b>, rather than having one or two razor-sharp peaks
+        that stick out and fatigue your ears.
       </div>
     </div>
   </div>
@@ -173,8 +185,12 @@
         <b>dBFS</b> (decibels relative to full scale). 0 dBFS would be a clipped signal, so normal car levels
         will be negative (for example −35 to −10 dBFS).</li>
 
-      <li><b>Spectrum plot</b>: Each bar shows how much energy there is at different frequencies:
-        low rumble on the left, speech and mid-range in the center, hiss/whine on the right.</li>
+      <li><b>Spectrum plot</b>: Now with axis labels:
+        <ul>
+          <li><b>X-axis</b>: frequency in Hz, with ticks at ~0, 1k, 2k, 4k, 8k (exact values depend on the phone’s sample rate).</li>
+          <li><b>Y-axis</b>: relative level from 0 (bottom) to 1 (top). These are normalized magnitudes from the FFT.</li>
+        </ul>
+      </li>
 
       <li><b>FPS</b>: Frames per second – how often the display and spectrum graph update. Values around 20–30 are normal;
         it doesn’t affect the audio, just how smooth the visual feels.</li>
@@ -496,37 +512,31 @@
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Auto level (NEW LOGIC) ----------
+  // ---------- Auto level ----------
   function updateAutoGain(envDb){
     if(!autoModeCB.checked || !gainNode) return;
     const sliderDb = parseFloat(gainSl.value);
 
     if(envDb == null || isNaN(envDb)){
-      // No environment reading yet => sit at the slider
       targetGainDb = sliderDb;
     } else {
-      // Reference cabin level where slider is "just right"
-      const refEnv = -35;   // dBFS
-      const k = 0.5;        // how strongly env affects level
-
-      // Move around the slider depending on how loud the cabin is
+      const refEnv = -35;
+      const k = 0.5;
       let tgt = sliderDb + k * (envDb - refEnv);
 
-      // Limit how far auto can move from slider (±8 dB)
       const maxDelta = 8;
       const minDbAround = sliderDb - maxDelta;
       const maxDbAround = sliderDb + maxDelta;
       if(tgt < minDbAround) tgt = minDbAround;
       if(tgt > maxDbAround) tgt = maxDbAround;
 
-      // Absolute safety clamp
       if(tgt < -45) tgt = -45;
       if(tgt > -5)  tgt = -5;
 
       targetGainDb = tgt;
     }
 
-    const alpha = 0.05; // smoothing factor
+    const alpha = 0.05;
     currentGainDb += (targetGainDb - currentGainDb) * alpha;
     gainNode.gain.value = dbToGain(currentGainDb);
   }
@@ -554,9 +564,9 @@
 
     let newKind = autoToneKind;
     if(tilt > TH){
-      newKind = 'gray';   // bass-heavy cabin -> add highs
+      newKind = 'gray';
     } else if(tilt < -TH){
-      newKind = 'brown';  // treble-heavy cabin -> add lows
+      newKind = 'brown';
     } else {
       newKind = 'pink';
     }
@@ -720,19 +730,80 @@
       latestRmsDb = null;
     }
 
-    // Spectrum + auto-tone
+    // Spectrum + axes + auto-tone
     ctx2d.clearRect(0,0,scope.width,scope.height);
+    const W = scope.width, H = scope.height;
+    const paddingLeft = 32;
+    const paddingRight = 6;
+    const paddingTop = 8;
+    const paddingBottom = 24;
+    const plotW = W - paddingLeft - paddingRight;
+    const plotH = H - paddingTop - paddingBottom;
+    const axisX0 = paddingLeft;
+    const axisY0 = H - paddingBottom;
+
+    // Draw axes
+    ctx2d.strokeStyle = '#2a333e';
+    ctx2d.lineWidth = 1;
+    // X axis
+    ctx2d.beginPath();
+    ctx2d.moveTo(axisX0, axisY0);
+    ctx2d.lineTo(axisX0 + plotW, axisY0);
+    ctx2d.stroke();
+    // Y axis
+    ctx2d.beginPath();
+    ctx2d.moveTo(axisX0, axisY0);
+    ctx2d.lineTo(axisX0, paddingTop);
+    ctx2d.stroke();
+
+    ctx2d.fillStyle = '#90a4b7';
+    ctx2d.font = '10px system-ui';
+
+    // X-axis ticks (0, 1k, 2k, 4k, 8k Hz approx)
+    if(specAnalyser && specData){
+      const sr = ac ? ac.sampleRate || 48000 : 48000;
+      const nyq = sr / 2;
+      const ticksHz = [0, 1000, 2000, 4000, 8000];
+      ticksHz.forEach(hz => {
+        if(hz > nyq) return;
+        const x = axisX0 + (hz / nyq) * plotW;
+        ctx2d.beginPath();
+        ctx2d.moveTo(x, axisY0);
+        ctx2d.lineTo(x, axisY0 + 4);
+        ctx2d.stroke();
+        const label = hz === 0 ? '0' : (hz >= 1000 ? (hz/1000)+'k' : hz.toString());
+        ctx2d.fillText(label, x - ctx2d.measureText(label).width/2, axisY0 + 14);
+      });
+    }
+
+    // Y-axis ticks (0, 0.5, 1.0)
+    const yTicks = [0, 0.5, 1.0];
+    yTicks.forEach(v => {
+      const y = axisY0 - v * plotH;
+      ctx2d.beginPath();
+      ctx2d.moveTo(axisX0-3, y);
+      ctx2d.lineTo(axisX0, y);
+      ctx2d.stroke();
+      const label = v.toFixed(1);
+      ctx2d.fillText(label, axisX0 - 4 - ctx2d.measureText(label).width, y+3);
+    });
+
+    // Axis titles
+    ctx2d.fillText('Frequency (Hz)', axisX0 + plotW/2 - ctx2d.measureText('Frequency (Hz)').width/2, H - 6);
+    ctx2d.fillText('Level', axisX0 - 4 - ctx2d.measureText('Level').width, paddingTop + 10);
+
+    // Bars
     if(specAnalyser && specData){
       specAnalyser.getByteFrequencyData(specData);
-      const W = scope.width, H = scope.height;
       const bars = 96;
       const step = Math.floor(specData.length / bars);
       for(let i=0;i<bars;i++){
         const v = specData[i*step]/255;
-        const x = (i/bars) * W;
-        const h = v * (H-8);
+        const barX = axisX0 + (i/bars) * plotW;
+        const hBar = v * plotH;
+        const y = axisY0 - hBar;
         ctx2d.fillStyle = '#4ea1ff';
-        ctx2d.fillRect(x, H - h, (W/bars)-2, h);
+        ctx2d.fillRect(barX, y, (plotW/bars)-1, hBar);
       }
       updateAutoTone(now);
     }
